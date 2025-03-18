@@ -21,7 +21,7 @@ async function initializeAudio(onMeasurement) {
         await audioContext.resume();
         console.log(`audio context sample rate: ${audioContext.sampleRate}`);
     }
-    await audioContext.audioWorklet.addModule('./measurement_audio_worklet.js');
+    await audioContext.audioWorklet.addModule('js/measurement_audio_worklet.js');
 
     // Get user's microphone and connect it to the AudioContext.
     const inputStream = await navigator.mediaDevices.getUserMedia({
@@ -48,9 +48,9 @@ async function initializeAudio(onMeasurement) {
     console.log(`${MeasurementAudioMessageType.MEASUREMENT_DONE}`);
     impulseResponseEstimatorNode.port.onmessage = (event) => {
         // console.log(event);
-        if (event.data.type === "LOG") {
-            console.log("[AudioMeasurementWorkletLog]: " + event.data.message);
-        } else if (event.data.type === "MEASUREMENT_DONE") {
+        if (event.data.type === MeasurementAudioMessageType.LOG) {
+            console.log("[Worklet]: " + event.data.message);
+        } else if (event.data.type === MeasurementAudioMessageType.MEASUREMENT_DONE) {
             console.log("Measurement is done");
             inputStream.getTracks().forEach(function (track) {
                 track.stop();
