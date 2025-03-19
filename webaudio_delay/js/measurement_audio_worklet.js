@@ -17,6 +17,7 @@ class MeasurementProcessor extends AudioWorkletProcessor {
 
         console.log(options);
 
+        this.numberOfInputs = options.numberOfInputs;
         this.preSilenceFrames = Math.trunc(0.2 * this.sampleRate);
         this.tailSilenceFrames = Math.trunc(4 * this.sampleRate);
         this.outputChannel = 0;
@@ -26,22 +27,27 @@ class MeasurementProcessor extends AudioWorkletProcessor {
         this.measurementOnGoing = false;
         this.count = 0;
 
-        console.log(`Recording duration: ${this.preSilenceFrames} + ${this.excitationSignal.length} + ${this.tailSilenceFrames}`);
-        this.recording = new Float32Array(this.preSilenceFrames + this.excitationSignal.length + this.tailSilenceFrames);
-        this.once = 0;
+        this.recordingNumFrames = this.preSilenceFrames + this.excitationSignal.length + this.tailSilenceFrames;
+        console.log(`Recording duration: ${this.recordingNumFrames} numberOfInputs: ${options.numberOfInputs}`);
+        this.recording = [];
+        for (let inputIndex = 0; inputIndex < options.numberOfInputs; ++inputIndex) {
+            this.recording[inputIndex] = new Float32Array(this.recordingNumFrames);
+        }
 
         this.port.onmessage = this.handle_message_.bind(this);
+        console.log("finished constructor")
     }
 
     handle_message_(event) {
-        console.log("[MeasurementProcessor] got " + event);
         if (event.data.type === MeasurementAudioMessageType.START_MEASUREMENT) {
+            console.log('[Worker] START');
             this.currentFrames = 0;
             this.measurementOnGoing = true;
         }
     }
 
     log(msg) {
+        console.log(msg);
         this.port.postMessage({
             type: MeasurementAudioMessageType.LOG,
             message: msg,
@@ -59,17 +65,24 @@ class MeasurementProcessor extends AudioWorkletProcessor {
         if (this.measurementOnGoing === false) {
             return true;
         }
-        const output = outputs[0][this.outputChannel];
-        const input = inputs[0][this.inputChannel];
-        if (input === undefined) {
+        if (inputs === undefined) {
             return true;
         }
+        for (let inputIndex = 0; inputIndex < this.numberOfInputs; ++inputIndex) {
+            if (inputs[inputIndex] === undefined) {
+                return true;
+            }
+        }
+
+        const output = outputs[0][this.outputChannel];
         for (let n = 0; n < output.length; ++n) {
             if (this.currentFrames % 48000 === 0) {
-                this.log(`One sec has passed: ${this.currentFrames}`);
+                this.log(`One sec has passed: ${this.currentFrames} inputsSize: ${inputs.length} numberOfInputs: ${this.numberOfInputs}`);
             }
-            if (this.currentFrames < this.recording.length) {
-                this.recording[this.currentFrames] = input[n];
+            if (this.currentFrames < this.recordingNumFrames) {
+                for (let inputIndex = 0; inputIndex < this.numberOfInputs; ++inputIndex) {
+                    this.recording[inputIndex][this.currentFrames] = inputs[inputIndex][this.inputChannel][n];
+                }
             } else {
                 this.measurementOnGoing = false;
                 this.measurement_done();

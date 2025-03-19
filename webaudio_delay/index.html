@@ -11,7 +11,17 @@
         <input id="gdm-use" type="checkbox" unchecked /><label for="gdm-use">Screen (getDisplayMedia)</label>
     </div>
     <button id="measureButton">Measure</button>
-    <div>
+
+    <div id="results-section">
+        <table id="results-table">
+            <tr>
+                <td>Date time</td>
+                <td>Latency (ms)</td>
+                <td>Gain (dB)</td>
+                <td>Measurement link</td>
+                <td>Linear impulse response link</td>
+            </tr>
+        </table>
         <div id="audioContextLatency"></div>
         <a id="downloadMeasurementLink"> Download measurement</a>
         <a id="downloadLinearImpulseResponseLink"> Download linear impulse response</a>
