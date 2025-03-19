@@ -6,13 +6,19 @@
 
 <body>
     <h1>Impulse response measurement</h1>
+    <div>
+        <input id="gum-use" type="checkbox" checked /><label for="gum-use">Microphone (getUserMedia)</label>
+        <input id="gdm-use" type="checkbox" unchecked /><label for="gdm-use">Screen (getDisplayMedia)</label>
+    </div>
     <button id="measureButton">Measure</button>
-    <div id="audioContextLatency"></div>
-    <a id="downloadMeasurementLink"> Download measurement</a>
-    <a id="downloadLinearImpulseResponseLink"> Download linear impulse response</a>
-    <div id="measuredResult"></div>
-    <br />
-    <canvas id="plotCanvas"></canvas>
+    <div>
+        <div id="audioContextLatency"></div>
+        <a id="downloadMeasurementLink"> Download measurement</a>
+        <a id="downloadLinearImpulseResponseLink"> Download linear impulse response</a>
+        <div id="measuredResult"></div>
+        <br />
+        <canvas id="plotCanvas"></canvas>
+    </div>
 
     <script src="js/app.js" type="module"></script>
 </body>
