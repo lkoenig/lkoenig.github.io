@@ -6,6 +6,8 @@ import { Plot } from './plot.js';
 import { getDataAsWav } from './wav_tools.js';
 
 const SAMPLE_RATE_HZ = 48000.0;
+const preDelay = 0.2;
+const silenceThreshold = -60;
 
 const gumUseCheckbox = document.getElementById('gum-use');
 const gdmUseCheckbox = document.getElementById('gdm-use');
@@ -13,10 +15,6 @@ const resultsTable = document.getElementById('results-table');
 
 const startElement = document.getElementById("measureButton");
 const plotCanvas = document.getElementById("plotCanvas");
-const downloadMeasurement = document.getElementById("downloadMeasurementLink");
-downloadMeasurement.hidden = true;
-const downloadLinearImpulseResponse = document.getElementById("downloadLinearImpulseResponseLink");
-downloadLinearImpulseResponse.hidden = true;
 const measuredResult = document.getElementById("measuredResult");
 const audioContextLatency = document.getElementById("audioContextLatency");
 
@@ -51,12 +49,16 @@ async function initializeAudio(onMeasurement) {
         {
             numberOfInputs: impulseResponseEstimatorNumInputs,
             processorOptions: {
+                preDelay,
                 excitationSignal: exponential_sine_sweep.sine_sweep
             }
         }
     );
     console.log('Connect stimulus to output of AudioContext');
     impulseResponseEstimatorNode.connect(audioContext.destination);
+
+    const measurmentTimestamp = Date.now();
+    const measurmentMetadata = [];
 
     let gdmInputStream;
     if (gdmUseCheckbox.checked) {
@@ -77,10 +79,13 @@ async function initializeAudio(onMeasurement) {
 
         };
         gdmInputStream = await navigator.mediaDevices.getDisplayMedia(gdmOptions);
-        console.log(gdmInputStream);
         const gdmNode = new MediaStreamAudioSourceNode(audioContext, { mediaStream: gdmInputStream });
         gdmNode.connect(impulseResponseEstimatorNode, 0, impulseResponseEstimatorInputIndex);
         impulseResponseEstimatorInputIndex++;
+        measurmentMetadata.push({
+            timestamp: measurmentTimestamp,
+            label: "getDisplayMedia",
+        });
     }
 
     let gumInputStream;
@@ -99,6 +104,10 @@ async function initializeAudio(onMeasurement) {
         const gumNode = new MediaStreamAudioSourceNode(audioContext, { mediaStream: gumInputStream });
         gumNode.connect(impulseResponseEstimatorNode, 0, impulseResponseEstimatorInputIndex);
         impulseResponseEstimatorInputIndex++;
+        measurmentMetadata.push({
+            timestamp: measurmentTimestamp,
+            label: "getUserMedia",
+        });
     }
 
     console.log("Register logger for the audio worklet");
@@ -118,7 +127,7 @@ async function initializeAudio(onMeasurement) {
                 });
             }
             audioContext.suspend();
-            onMeasurement(event.data.measurement, audioContext.sampleRate);
+            onMeasurement(event.data.measurement, audioContext.sampleRate, measurmentMetadata);
         }
     };
 
@@ -140,16 +149,21 @@ function publishResult(result) {
     const resultRow = resultsTable.insertRow(-1)
 
     const timestampCell = resultRow.insertCell(-1);
-    const timestampText = document.createTextNode(result.timestamp);
-    timestampCell.appendChild(timestampText);
+    const ts = new Date(result.timestamp);
+    timestampCell.appendChild(document.createTextNode(ts.toISOString()));
+
+    const labelCell = resultRow.insertCell(-1);
+    labelCell.appendChild(document.createTextNode(result.label));
 
     const latencyCell = resultRow.insertCell(-1);
-    const latencyText = document.createTextNode(`${(result.latency * 1000).toFixed(3)}`);
-    latencyCell.appendChild(latencyText);
-
     const gainCell = resultRow.insertCell(-1);
-    const gainText = document.createTextNode(`${(result.gain).toFixed(1)}`);
-    gainCell.appendChild(gainText);
+
+    gainCell.appendChild(document.createTextNode(`${(result.gain).toFixed(1)}`));
+    if (result.gain < silenceThreshold) {
+        latencyCell.appendChild(document.createTextNode("n/a"));
+    } else {
+        latencyCell.appendChild(document.createTextNode(`${(result.latency * 1000).toFixed(3)}`));
+    }
 
 
     let measurementCell = resultRow.insertCell(-1);
@@ -169,26 +183,28 @@ function publishResult(result) {
 }
 
 startElement.onclick = () => {
-    startMeasurement((measurements, sampleRateHz) => {
-        console.log(measurements);
-        for (const measurement of measurements) {
-            // p.plot(measurement);
+    startMeasurement((measurements, sampleRateHz, metadata) => {
+        for (let i = 0; i < measurements.length; i++) {
+            const measurement = measurements[i];
             exponential_sine_sweep.linear_response(measurement).then(ir => {
                 const measurementBlob = new Blob([getDataAsWav(sampleRateHz, 1, measurement)], { type: "audio/wav" });
                 const irBlob = new Blob([getDataAsWav(sampleRateHz, 1, ir)], { type: "audio/wav" });
                 p.vLine(0.2, "#0f0");
                 p.draw(ir, sampleRateHz);
-                let max = ir.reduce((a, b) => Math.max(Math.abs(a), Math.abs(b)), 0);
-                console.log(`Max impulse response: ${max}`)
-                let index_max = ir.findLastIndex(x => Math.abs(x) > 0.99 * max);
-                let delay = index_max / sampleRateHz - 0.2;
+                const max = ir.reduce((a, b) => Math.max(Math.abs(a), Math.abs(b)), 0);
+                const gainDb = 20.0 * Math.log10(Math.abs(max));
+                console.log(`Max impulse response: ${max.toFixed(4)} (${gainDb.toFixed(1)} dB)`);
+                const index_max = ir.findLastIndex(x => Math.abs(x) > 0.99 * max);
+                const delay = index_max / sampleRateHz - preDelay;
                 console.log(`Delay: ${delay} seconds`);
-                p.vLine(delay + 0.2, "#00f");
-                measuredResult.textContent = `Delay: ${delay * 1000} ms`;
+                if (gainDb > silenceThreshold) {
+                    p.vLine(delay + preDelay, "#00f");
+                }
                 publishResult({
-                    timestamp: Date.now(),
+                    timestamp: metadata[i].timestamp,
+                    label: metadata[i].label,
                     latency: delay,
-                    gain: 20.0 * Math.log10(Math.abs(max)),
+                    gain: gainDb,
                     impulseResponseLink: URL.createObjectURL(irBlob),
                     measurementLink: URL.createObjectURL(measurementBlob),
                 });

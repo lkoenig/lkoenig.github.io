@@ -9,16 +9,17 @@ class MeasurementProcessor extends AudioWorkletProcessor {
 
         if (options && options.processorOptions) {
             const {
+                preDelay,
                 excitationSignal,
             } = options.processorOptions;
-
+            this.preDelay = preDelay;
             this.excitationSignal = excitationSignal;
         }
 
         console.log(options);
 
         this.numberOfInputs = options.numberOfInputs;
-        this.preSilenceFrames = Math.trunc(0.2 * this.sampleRate);
+        this.preSilenceFrames = Math.trunc(this.preDelay * this.sampleRate);
         this.tailSilenceFrames = Math.trunc(4 * this.sampleRate);
         this.outputChannel = 0;
         this.inputChannel = 0;
@@ -28,26 +29,22 @@ class MeasurementProcessor extends AudioWorkletProcessor {
         this.count = 0;
 
         this.recordingNumFrames = this.preSilenceFrames + this.excitationSignal.length + this.tailSilenceFrames;
-        console.log(`Recording duration: ${this.recordingNumFrames} numberOfInputs: ${options.numberOfInputs}`);
         this.recording = [];
         for (let inputIndex = 0; inputIndex < options.numberOfInputs; ++inputIndex) {
             this.recording[inputIndex] = new Float32Array(this.recordingNumFrames);
         }
 
         this.port.onmessage = this.handle_message_.bind(this);
-        console.log("finished constructor")
     }
 
     handle_message_(event) {
         if (event.data.type === MeasurementAudioMessageType.START_MEASUREMENT) {
-            console.log('[Worker] START');
             this.currentFrames = 0;
             this.measurementOnGoing = true;
         }
     }
 
     log(msg) {
-        console.log(msg);
         this.port.postMessage({
             type: MeasurementAudioMessageType.LOG,
             message: msg,
